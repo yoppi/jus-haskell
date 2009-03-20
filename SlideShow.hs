@@ -3,7 +3,9 @@
 
 module Main where
 
+import System.Environment
 import qualified System.IO.UTF8 as U
 
+
 main :: IO ()
-main = U.readFile "session.txt" >>= U.putStr
+main = getArgs >>= U.readFile . head >>= U.putStr
