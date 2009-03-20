@@ -4,6 +4,7 @@
 module Main where
 
 import Data.List
+import System.Cmd
 import System.Environment
 import System.IO
 import qualified System.IO.UTF8 as U
@@ -31,10 +32,19 @@ displayParagraph :: Paragraph -> IO ()
 displayParagraph = (pause >>) . (clear >>) . outputParagraph
 
 outputParagraph :: Paragraph -> IO ()
-outputParagraph = U.putStr . unlines
+outputParagraph = mapM_ displayLine
+
+displayLine :: Line -> IO ()
+displayLine = (>> dilay) . outputLine
+
+outputLine :: Line -> IO ()
+outputLine = U.putStrLn
 
 pause :: IO ()
 pause = timeout (-1) getChar >> return ()
 
 clear :: IO ()
 clear = system "clear" >> return ()
+
+delay :: IO ()
+delay = timeout (10^5) >> return ()
