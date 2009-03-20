@@ -22,13 +22,19 @@ paragraphs = unfoldr phi
 
 main :: IO ()
 main = inputSetup 
-     >>= (>> pause) . outputParagraph . head . paragraphs . lines
+     >>= mapM_ displayParagraph . paragraphs . lines
 
 inputSetup :: IO String
 inputSetup = getArgs >>= U.readFile . head
+
+displayParagraph :: Paragraph -> IO ()
+displayParagraph = (pause >>) . (clear >>) . outputParagraph
 
 outputParagraph :: Paragraph -> IO ()
 outputParagraph = U.putStr . unlines
 
 pause :: IO ()
 pause = timeout (-1) getChar >> return ()
+
+clear :: IO ()
+clear = system "clear" >> return ()
