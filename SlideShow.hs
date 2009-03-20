@@ -22,8 +22,14 @@ paragraphs = unfoldr phi
         hr l = "-----" `isPrefixOf` l
 
 main :: IO ()
-main = inputSetup 
+main =   initialize
+     >>  inputSetup 
      >>= mapM_ displayParagraph . paragraphs . lines
+
+initialize :: IO ()
+initialize = hSetBuffering stdin NoBuffering
+           >> hSetBuffering stdout NoBuffering
+           >> stdinNoEcho
 
 inputSetup :: IO String
 inputSetup = getArgs >>= U.readFile . head
@@ -38,7 +44,13 @@ displayLine :: Line -> IO ()
 displayLine = (>> dilay) . outputLine
 
 outputLine :: Line -> IO ()
-outputLine = U.putStrLn
+outputLine = mapM_ displayChar
+
+displayChar :: Char -> IO ()
+displayChar = (>> delay (10^4)) . outputChar
+
+outputChar :: Char -> IO ()
+outputChar = putStr. encodeString . (:[])
 
 pause :: IO ()
 pause = timeout (-1) getChar >> return ()
@@ -46,5 +58,8 @@ pause = timeout (-1) getChar >> return ()
 clear :: IO ()
 clear = system "clear" >> return ()
 
-delay :: IO ()
-delay = timeout (10^5) >> return ()
+delay :: Int -> IO ()
+delay iv = timeout iv getChar >> return ()
+
+newline :: IO ()
+newline = putChar '\n'
