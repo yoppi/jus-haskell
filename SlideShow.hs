@@ -6,4 +6,4 @@ module Main where
 import qualified System.IO.UTF8 as U
 
 main :: IO ()
-main = U.getContens >>= U.putStr
+main = U.readFile "session.txt" >>= U.putStr
