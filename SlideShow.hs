@@ -4,6 +4,7 @@
 module Main where
 
 import Codec.Binary.UTF8.String
+import Control.Monad.State
 import Data.List
 import System.Cmd
 import System.Environment
@@ -24,10 +25,34 @@ paragraphs = unfoldr phi
                    xsys       -> Just xsys
         hr l = "-----" `isPrefixOf` l
 
+type Display = StateT Mode IO ()
+data Mode = Normal | Delayed
+type Modifier = Mode -> Mode
+
+defaultMode :: Mode
+defaultMode = Normal
+
+defaultCharDelay :: Int
+defaultCharDelay = 10^3
+
+delayed, normal :: Modifier
+delayed = const Delayed
+normal  = const Normal
+
+setDelayed, setNormal :: Display
+setDelayed = modify delayed
+setNormal  = modify normal
+
+runDisplay :: Display -> IO ()
+runDisplay dsp = evalStateT dsp defaultMode
+
+slideShow :: String -> Display
+slideShow = mapM_ displayParagraph . paragraphs . lines
+
 main :: IO ()
 main =   initialize
      >>  inputSetup 
-     >>= mapM_ displayParagraph . paragraphs . lines
+     >>= runDisplay . slideShow
 
 initialize :: IO ()
 initialize = hSetBuffering stdin NoBuffering
@@ -42,19 +67,28 @@ stdinNoEcho =   getTerminalAttributes stdInput
 inputSetup :: IO String
 inputSetup = getArgs >>= U.readFile . head
 
-displayParagraph :: Paragraph -> IO ()
-displayParagraph = (pause >>) . (clear >>) . outputParagraph
+displayParagraph :: Paragraph -> Display
+displayParagraph = (setNormal >>) .  (pause >>) . (clear >>) 
+                 . outputParagraph
 
-outputParagraph :: Paragraph -> IO ()
+outputParagraph :: Paragraph -> Display
 outputParagraph = mapM_ (dispatchLine displayLine)
 
-dispatchLine :: (Line -> IO ()) -> Line -> IO ()
+dispatchLine :: (Line -> Display) -> Line -> Display
 dispatchLine dl l
-  | ":p" `isPrefixOf` l = pause
-  | ":c" `isPrefixOf` l = clear
-  | "% " `isPrefixOf` l = putStr "% " >> pause >> dl (drop 2 l)
-  | not (null prompt)   = putStr prompt >> pause >> dl rest
-  | otherwise           = dl l
+  | "-"  `isPrefixOf` l = dl (tail l) >> newline
+  | "="  `isPrefixOf` l = dl (tail l)
+  | ":e" `isPrefixOf` l = setDelayed
+  | ":r" `isPrefixOf` l = setNormal
+  | ":p" `isPrefixOf` l = setNormal >> pause
+  | ":c" `isPrefixOf` l = setNormal >> clear
+  | "% " `isPrefixOf` l = liftIO (putStr "% ") >> setDelayed 
+                        >> pause >> dl (drop 2 l)
+                        >> setNormal >> pause >> newline
+  | not (null prompt)   = liftIO (putStr prompt) >> setDelayed
+                        >> pause >> dl rest
+                        >> setNormal >> pause >> newline
+  | otherwise           = dl l >> newline
     where
       (prompt, rest) = case break ('>' ==) l of
                          (_, [])        -> ("", "")
@@ -62,31 +96,39 @@ dispatchLine dl l
                                            else (xs++"> ", ys)
                          _              -> ("", "")
 
-displayLine :: Line -> IO ()
-displayLine = (>> delay (10^5)) . (>> newline) . outputLine
+displayLine :: Line -> Display
+displayLine = outputLine
 
-outputLine :: Line -> IO ()
+outputLine :: Line -> Display
 outputLine = mapM_ displayChar
 
-displayChar :: Char -> IO ()
-displayChar = (>> delay (10^5)) . outputChar
+displayChar :: Char -> Display
+displayChar = (get >>= branchOn nop (delay defaultCharDelay) >>)
+            . outputChar
 
-outputChar :: Char -> IO ()
-outputChar = putStr. encodeString . (:[])
+branchOn :: Display -> Display -> Mode -> Display
+branchOn n d Normal = n
+branchOn n d _      = d
 
-pause :: IO ()
-pause = timeout (-1) getChar >>= selector
+outputChar :: Char -> Display
+outputChar = liftIO . putStr. encodeString . (:[])
 
-selector :: Maybe Char -> IO ()
+pause :: Display
+pause = liftIO (timeout (-1) getChar) >>= selector
+
+selector :: Maybe Char -> Display
 selector mc = case mc of
-                Just 'q' -> exitSuccess
+                Just 'q' -> liftIO exitSuccess
                 _        -> return ()
 
-clear :: IO ()
-clear = system "clear" >> return ()
+clear :: Display
+clear = liftIO $ system "clear" >> return ()
 
-delay :: Int -> IO ()
-delay iv = timeout iv getChar >> return ()
+delay :: Int -> Display
+delay iv = liftIO $ timeout iv getChar >> return ()
 
-newline :: IO ()
-newline = putChar '\n'
+newline :: Display
+newline = liftIO $ putChar '\n'
+
+nop :: Display
+nop = return ()
